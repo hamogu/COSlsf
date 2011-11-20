@@ -52,7 +52,7 @@ class CosLsf(CompositeModel):
     Classes are generated dynamically upon import, a list of model classes
     is printed.
     '''
-    def __init__(self, p, model, name = 'CosLsf'):
+    def __init__(self, model, name = 'CosLsf'):
         self.model = model
         # attributes need to be initialized as such in classes derived
         # from NoAttributesAfterInit
@@ -188,9 +188,20 @@ def factory(filename, modelname):
             
     class NewClass(CosLsf):
         def __init__(self, p, model, name = modelname):
+            '''
+            Parameters
+            ----------
+            p : Sherpa parameters
+                This model has not parameters, but accepts anything here to
+                conferm to the Sherpa model API
+            model : Sherpa model
+                see Sherpa model API
+            name : string, optional
+                name of model
+            '''
             self.disp = disp
             self.lsf_tab =  np.loadtxt(filename)
-            CosLsf.__init__(self, name, model)
+            CosLsf.__init__(self, model, name)
 
     NewClass.__name__ = modelname
     return NewClass
