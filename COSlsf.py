@@ -28,6 +28,8 @@ The tables are read such that the the resulting LSF is tabulated from
 from sherpa.models import CompositeModel
 from sherpa.utils import interpolate
 from sherpa.ui import load_user_model
+# The following is implemeted in C and thus faster than python.
+from sherpa.astro.utils import rmf_fold
 
 #import logging
 #warning = logging.getLogger(__name__).warning
@@ -56,7 +58,11 @@ class CosLsf(CompositeModel):
         self.model = model
         # attributes need to be initialized as such in classes derived
         # from NoAttributesAfterInit
-        self.lsf_mat = 0.
+        self._rsp = 0.
+        self._grp = 0.
+        self._fch = 0.
+        self._nch = 0.
+
         self.cache_x = np.zeros(1)
         # Make mean value to 0
         # needed, because some tables are given from -n to +n, others from 1 to 2n+1 
@@ -119,22 +125,17 @@ class CosLsf(CompositeModel):
         newflux : ndarray
             flux convolved with the appropriate HST/COS LSF
         '''
-        # cache the lsf_mat, if wave did not change compared to the last call
+        if len(wave) != len(flux):
+            raise ValueError('Wave and Flux vector must have equal number of elements')
+        # cache the _rsp, if wave did not change compared to the last call
         # This will generally be the case in Sherpa fits
         if not np.allclose(wave, self.cache_x):
-            self.make_lsf_mat(wave)
-        newflux  = np.zeros_like(flux)
-        cols = np.vsplit(self.lsf_mat, self.lsf_mat.shape[0])
-        n = len(wave)
-        m = min(n, len(cols))
+            self.make_rsp(wave)
         
-        for i in np.arange(-(m/2), m/2+0.1, dtype = np.int):
-            newflux[max(0, i): min(n, n+i)] += (cols[m/2+i].ravel() * flux)[max(0, -i):min(n, n-i)]
-
-        return newflux
+        return rmf_fold(flux, self._grp, self._fch, self._nch, self._rsp, len(wave), 1)
     
-    def make_lsf_mat(self, wave):
-        '''Interpolate the COS LSF for all wavelength
+    def make_rsp(self, wave):
+        '''Interpolate the COS LSF for all wavelengths
         
         Parameters
         ----------
@@ -162,11 +163,26 @@ class CosLsf(CompositeModel):
 
         # 2. Interpolation: make lsf for each lambda
         n = len(wave)
-        self.lsf_mat = np.zeros((self.m, n))
+        self._rsp = np.zeros((n, self.m))
         for i in np.arange(-(self.m/2), self.m/2+0.1, dtype = np.int):
             pix = interpolate(wave, wavelen, lsftab[self.m/2+i,:])
-            self.lsf_mat[self.m/2 + i,:] = pix
+            self._rsp[:, self.m/2 + i] = pix
         
+        if np.isfinite(self._rsp).sum() != self._rsp.size:
+            raise ValueError('Response matrix holds nan or inf values!')
+        # 3. Reformat: Bring matix in same shape as Sherpa would do for RMFs
+        # I use the same naming convention here as in Sherpa `DataRMF` objects
+        self._grp = np.ones(n)
+        self._fch = np.clip(np.arange(1,n+1)-(self.m/2),1, np.inf)
+        
+        # set unused matix elements to nan - that allows a very simple
+        # way to flatten the array
+        for i in range(self.m/2):
+            self._rsp[i,0:self.m/2-i] = np.nan
+            self._rsp[-(i+1),-(self.m/2)+i:self.m] = np.nan
+        self._nch = np.sum(np.isfinite(self._rsp),axis = 1)
+        self._rsp = self._rsp[np.isfinite(self._rsp)].flatten()
+
         self.cache_x = wave
 
 # From the COS IHB
