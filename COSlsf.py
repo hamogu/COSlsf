@@ -26,16 +26,15 @@ The tables are read such that the the resulting LSF is tabulated from
 '''
 import os
 import glob
-from abc import ABCMeta
 import numpy as np
 
-from sherpa.models import Model #, modelCacher1d
-from sherpa.utils import interpolate, NoNewAttributesAfterInit
+from sherpa.models import Model, CompositeModel,  ArithmeticModel#, modelCacher1d
+from sherpa.utils import interpolate #, NoNewAttributesAfterInit
 from sherpa.utils.err import PSFErr
 from sherpa.ui import add_model
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
-from sherpa.instrument import PSFModel, ConvolutionModel
+from sherpa.instrument import ConvolutionKernel #, ConvolutionModel
 import sherpa.astro.ui
 
 #import logging
@@ -43,9 +42,9 @@ import sherpa.astro.ui
 #info = logging.getLogger(__name__).info
 
 #aka instrument.py/Kernel
-class Kernel(NoNewAttributesAfterInit):
+class Kernel(Model):
 
-    def __init__(self, lsf_tab, disp):
+    def __init__(self, lsf_tab, disp, name):
         self.lsf_tab = lsf_tab
         self.disp = disp
         # attributes need to be initialized as such in classes derived
@@ -60,18 +59,18 @@ class Kernel(NoNewAttributesAfterInit):
         # needed, because some tables are given from -n to +n, others from 1 to 2n+1 
         self.shift = self.lsf_tab[1:,0] - np.mean(self.lsf_tab[1:,0])
         self.m = 2 * int(max(self.shift)) + 1
-        NoNewAttributesAfterInit.__init__(self)
+        Model.__init__(self, name)
 
-    def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
+    def calc(self, pl, pr, rhs, *args, **kwargs):
 
         args = list(args)    # tuples are immutable!
         # add m/2 elements to the wavelength array on each side
         # to avoid edge effects when folding with the LSF
-        args[1] = interpolate(np.arange(-(self.m/2), len(args[1]) + self.m/2-0.1), np.arange(len(args[1])), args[1])
+        args[0] = interpolate(np.arange(-(self.m/2), len(args[0]) + self.m/2-0.1), np.arange(len(args[0])), args[0])
 
         flux = rhs(pr, *args, **kwargs)
 
-        return self.convolve(args[1], flux)[self.m/2 : -(self.m/2)]
+        return self.convolve(args[0], flux)[self.m/2 : -(self.m/2)]
 
 
     def convolve(self, wave, flux):
@@ -155,30 +154,44 @@ class Kernel(NoNewAttributesAfterInit):
 
         self.cache_x = wave
 
-class CosLsf(PSFModel):
-    def __init__(self, name='COSLSF', kernel=None):
-        self._name = name
+class ConvolutionModel(CompositeModel, ArithmeticModel):
+    '''This is a simplified version of sherpa.instrument.ConvolutionModel
+    
+    Really, sherpa.instrument.ConvolutionModel could be derived from this class.
+    '''
+    def __init__(self, lhs, rhs):
+        self.lhs = lhs
+        self.rhs = rhs
+	CompositeModel.__init__(self,
+                                ('%s(%s)' %
+                                 (self.lhs.name, self.rhs.name)),
+                                (self.lhs, self.rhs))
+
+
+    def calc(self, p, *args, **kwargs):
+        nlhs = len(self.lhs.pars)
+	return self.lhs.calc(p[:nlhs], p[nlhs:],
+                             self.rhs.calc, *args, **kwargs)
+
+
+class CosLsf(ConvolutionKernel):
+    
+    def __init__(self, kernel, name='COSLSF'):
         self.kernel = kernel
+        self.name = name
+        self.__name__ = name
         Model.__init__(self, name)
     
     def __call__(self, model):
         if self.kernel is None:
             raise PSFErr('notset')
         kernel = self.kernel
-        return ConvolutionModel(kernel, model, self)
+        return ConvolutionModel(kernel, model)#, self)
 
-    def calc(self, *args, **kwargs):
-        if self.kernel is None:
-            raise PSFErr('notset')
-        return self.kernel.calc(*args, **kwargs)
-    
-    def fold(self, data):
-        '''empty function.
-        
-        In the original PSFModel is performs some initilisation.
-        It's defined here for compatibility only.
-        '''
-        pass
+    #def calc(self, *args, **kwargs):
+        #if self.kernel is None:
+            #raise PSFErr('notset')
+        #return self.kernel.calc(*args, **kwargs)
 
 # From the COS IHB
 # dispersion in Ang / pixel
@@ -187,7 +200,7 @@ dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': 
 '''On import this module will detect all data files in lsf/
 and automatically generate SHERPA models for that.
 '''
-def add_psf(session, ilename, modelname):
+def add_psf(session, filename, modelname):
 
     for grating in dispersion.keys():
         # If one grating matches, generate a class for that
@@ -198,11 +211,12 @@ def add_psf(session, ilename, modelname):
         print 'Grating in ' + modelname + ' not recogized.'
     
     lsf_tab = np.loadtxt(filename)
-    this_kern = Kernel(lsf_tab, disp)
+    this_kern = Kernel(lsf_tab, disp, 'kernal'+modelname)
     
-    lsf = CosLsf(modelname.lower(), this_kern)
+    lsf = CosLsf(this_kern, 'lsf'+modelname)
+    #add_model(lsf)
     session._add_model_component(lsf)
-    session._psf_models.append(lsf)
+    #session._psf_models.append(lsf)
 
 # List of all data files in the lsf directory
 datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
