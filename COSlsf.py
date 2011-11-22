@@ -155,12 +155,10 @@ class Kernel(NoNewAttributesAfterInit):
 
         self.cache_x = wave
 
-
-#aka instrument.py/PSFModel
-class CosLsf(Model):
-    __metaclass__ = ABCMeta
+class CosLsf(PSFModel):
     def __init__(self, name='COSLSF', kernel=None):
         self._name = name
+        self.kernel = kernel
         Model.__init__(self, name)
     
     def __call__(self, model):
@@ -182,9 +180,6 @@ class CosLsf(Model):
         '''
         pass
 
-# Sherpa uses explicit isinstance and not Duck-typing, so fool
-# that with an ABC
-CosLsf.register(PSFModel)
 # From the COS IHB
 # dispersion in Ang / pixel
 dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': [0.033, 0.037, 0.040, 0.39], 'G185M': [0.037], 'G225M': [0.033], 'G285M': [0.04], 'G230L': [0.39]}
@@ -192,7 +187,6 @@ dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': 
 '''On import this module will detect all data files in lsf/
 and automatically generate SHERPA models for that.
 '''
-print 'subclass', issubclass(PSFModel, CosLsf)
 def add_psf(session, ilename, modelname):
 
     for grating in dispersion.keys():
@@ -207,7 +201,6 @@ def add_psf(session, ilename, modelname):
     this_kern = Kernel(lsf_tab, disp)
     
     lsf = CosLsf(modelname.lower(), this_kern)
-    print isinstance(lsf,PSFModel), isinstance(lsf,CosLsf)
     session._add_model_component(lsf)
     session._psf_models.append(lsf)
 
