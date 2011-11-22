@@ -24,38 +24,30 @@ Format of input tables::
 The tables are read such that the the resulting LSF is tabulated from
 -n to +n assuming that the tables *give a symmetric region aroound the line center*.
 '''
+import os
+import glob
+from abc import ABCMeta
+import numpy as np
 
-from sherpa.models import CompositeModel
-from sherpa.utils import interpolate
-from sherpa.ui import load_user_model
+from sherpa.models import Model #, modelCacher1d
+from sherpa.utils import interpolate, NoNewAttributesAfterInit
+from sherpa.utils.err import PSFErr
+from sherpa.ui import add_model
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
+from sherpa.instrument import PSFModel, ConvolutionModel
+import sherpa.astro.ui
 
 #import logging
 #warning = logging.getLogger(__name__).warning
 #info = logging.getLogger(__name__).info
-import numpy as np
-import os
-import glob
 
-class CosLsf(CompositeModel):
-    '''Base class for all COS LSF model classes.
+#aka instrument.py/Kernel
+class Kernel(NoNewAttributesAfterInit):
 
-    An example usage in python could be:
-    
-        import sherpa.ui as ui
-        import COSlsf 
-        x = np.arange(2500,2700)
-        y = np.ones(200)
-        ui.load_arrays(1, x,y)
-        ui.set_full_model(tabNUV(ui.const1d.c1 + ui.gauss1d.g1))
-
-    `tabNUV` is a derived class for the LSF of the NUV gratings.
-    Classes are generated dynamically upon import, a list of model classes
-    is printed.
-    '''
-    def __init__(self, model, name = 'CosLsf'):
-        self.model = model
+    def __init__(self, lsf_tab, disp):
+        self.lsf_tab = lsf_tab
+        self.disp = disp
         # attributes need to be initialized as such in classes derived
         # from NoAttributesAfterInit
         self._rsp = 0.
@@ -68,41 +60,19 @@ class CosLsf(CompositeModel):
         # needed, because some tables are given from -n to +n, others from 1 to 2n+1 
         self.shift = self.lsf_tab[1:,0] - np.mean(self.lsf_tab[1:,0])
         self.m = 2 * int(max(self.shift)) + 1
+        NoNewAttributesAfterInit.__init__(self)
 
-        CompositeModel.__init__(self, '%s * %s' % (name, model.name), model)
+    def calc(self, pl, pr, lhs, rhs, *args, **kwargs):
 
-
-    def calc(self, *args, **kwargs):
-        '''This method is called be SHERPA to evaluate models.
-        
-        The LSF has no free parameters, thus all arguments are passed
-        to the enclosed models.
-        
-        However, to avoid edge effects, the wavelength vector is extended
-        to both sides, before it is passed to the inner models. Thus,
-        we can convolve the flux vector with the LSF and then crop the
-        outer parts, which might be effected by edge effects.
-        This requires, that the inner models can be calcualted for a larger
-        range of x values.
-        
-        Parameters
-        ----------
-        All parameters are passed othe the inner models. See Sherpa
-        documentation for details on which parameters are expected.
-        `args[1]` is the wave vector.
-        
-        Returns
-        -------
-        flux : ndarray
-            flux vector after appliing the LSF
-        '''
         args = list(args)    # tuples are immutable!
         # add m/2 elements to the wavelength array on each side
         # to avoid edge effects when folding with the LSF
         args[1] = interpolate(np.arange(-(self.m/2), len(args[1]) + self.m/2-0.1), np.arange(len(args[1])), args[1])
-        flux = self.model.calc(*args, **kwargs)
-        #convolve with LSF and return only the original part of the flux
+
+        flux = rhs(pr, *args, **kwargs)
+
         return self.convolve(args[1], flux)[self.m/2 : -(self.m/2)]
+
 
     def convolve(self, wave, flux):
         '''Convolve the `flux` with the COS LSF.
@@ -185,6 +155,36 @@ class CosLsf(CompositeModel):
 
         self.cache_x = wave
 
+
+#aka instrument.py/PSFModel
+class CosLsf(Model):
+    __metaclass__ = ABCMeta
+    def __init__(self, name='COSLSF', kernel=None):
+        self._name = name
+        Model.__init__(self, name)
+    
+    def __call__(self, model):
+        if self.kernel is None:
+            raise PSFErr('notset')
+        kernel = self.kernel
+        return ConvolutionModel(kernel, model, self)
+
+    def calc(self, *args, **kwargs):
+        if self.kernel is None:
+            raise PSFErr('notset')
+        return self.kernel.calc(*args, **kwargs)
+    
+    def fold(self, data):
+        '''empty function.
+        
+        In the original PSFModel is performs some initilisation.
+        It's defined here for compatibility only.
+        '''
+        pass
+
+# Sherpa uses explicit isinstance and not Duck-typing, so fool
+# that with an ABC
+CosLsf.register(PSFModel)
 # From the COS IHB
 # dispersion in Ang / pixel
 dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': [0.033, 0.037, 0.040, 0.39], 'G185M': [0.037], 'G225M': [0.033], 'G285M': [0.04], 'G230L': [0.39]}
@@ -192,7 +192,8 @@ dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': 
 '''On import this module will detect all data files in lsf/
 and automatically generate SHERPA models for that.
 '''
-def factory(filename, modelname):
+print 'subclass', issubclass(PSFModel, CosLsf)
+def add_psf(session, ilename, modelname):
 
     for grating in dispersion.keys():
         # If one grating matches, generate a class for that
@@ -201,26 +202,14 @@ def factory(filename, modelname):
             break
     else:
         print 'Grating in ' + modelname + ' not recogized.'
-            
-    class NewClass(CosLsf):
-        def __init__(self, p, model, name = modelname):
-            '''
-            Parameters
-            ----------
-            p : Sherpa parameters
-                This model has not parameters, but accepts anything here to
-                conferm to the Sherpa model API
-            model : Sherpa model
-                see Sherpa model API
-            name : string, optional
-                name of model
-            '''
-            self.disp = disp
-            self.lsf_tab =  np.loadtxt(filename)
-            CosLsf.__init__(self, model, name)
-
-    NewClass.__name__ = modelname
-    return NewClass
+    
+    lsf_tab = np.loadtxt(filename)
+    this_kern = Kernel(lsf_tab, disp)
+    
+    lsf = CosLsf(modelname.lower(), this_kern)
+    print isinstance(lsf,PSFModel), isinstance(lsf,CosLsf)
+    session._add_model_component(lsf)
+    session._psf_models.append(lsf)
 
 # List of all data files in the lsf directory
 datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
@@ -229,4 +218,5 @@ for filename in datlist:
     
     modelname = os.path.basename(filename).split('.')[0]
     print 'Adding '+ modelname +' to Sherpa'
-    load_user_model(factory(filename, modelname), modelname)
+    add_psf(sherpa.astro.ui._session, filename, modelname)
+
