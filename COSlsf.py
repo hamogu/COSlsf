@@ -29,19 +29,19 @@ import glob
 import numpy as np
 
 from sherpa.models import Model, CompositeModel,  ArithmeticModel#, modelCacher1d
-from sherpa.utils import interpolate #, NoNewAttributesAfterInit
+from sherpa.utils import interpolate
 from sherpa.utils.err import PSFErr
 from sherpa.ui import add_model
+
+from sherpa.instrument import ConvolutionKernel
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
-from sherpa.instrument import ConvolutionKernel #, ConvolutionModel
 import sherpa.astro.ui
 
-#import logging
-#warning = logging.getLogger(__name__).warning
-#info = logging.getLogger(__name__).info
+import logging
+warning = logging.getLogger(__name__).warning
+info = logging.getLogger(__name__).info
 
-#aka instrument.py/Kernel
 class Kernel(Model):
 
     def __init__(self, lsf_tab, disp, name):
@@ -116,8 +116,8 @@ class Kernel(Model):
             if max(abs(np.diff(wave) - disp)) < (disp / 100.):
                 break
         else:
-            print 'Warning: LSF convolution requires x to be binned in pixels.'
-            print 'Warning: delta(x) differs from value given in COS IHB.'
+            warning('LSF convolution requires x to be binned in pixels.')
+            warning('delta(x) differs from value given in COS IHB.')
         # first line of table is header values
         wavelen = self.lsf_tab[0, 1:]
         if ((min(wave) < 0.9 * min(wavelen)) or (max(wave) > 1.1 * max(wavelen))):
@@ -179,19 +179,15 @@ class CosLsf(ConvolutionKernel):
     def __init__(self, kernel, name='COSLSF'):
         self.kernel = kernel
         self.name = name
-        self.__name__ = name
+        #self.__name__ = name
         Model.__init__(self, name)
     
     def __call__(self, model):
         if self.kernel is None:
             raise PSFErr('notset')
         kernel = self.kernel
-        return ConvolutionModel(kernel, model)#, self)
+        return ConvolutionModel(kernel, model)
 
-    #def calc(self, *args, **kwargs):
-        #if self.kernel is None:
-            #raise PSFErr('notset')
-        #return self.kernel.calc(*args, **kwargs)
 
 # From the COS IHB
 # dispersion in Ang / pixel
@@ -208,15 +204,13 @@ def add_psf(session, filename, modelname):
             disp = dispersion[grating]
             break
     else:
-        print 'Grating in ' + modelname + ' not recogized.'
+        warning('Grating in ' + modelname + ' not recogized.')
     
     lsf_tab = np.loadtxt(filename)
-    this_kern = Kernel(lsf_tab, disp, 'kernal'+modelname)
+    this_kern = Kernel(lsf_tab, disp, modelname)
     
-    lsf = CosLsf(this_kern, 'lsf'+modelname)
-    #add_model(lsf)
+    lsf = CosLsf(this_kern, modelname)
     session._add_model_component(lsf)
-    #session._psf_models.append(lsf)
 
 # List of all data files in the lsf directory
 datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
@@ -224,6 +218,6 @@ datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
 for filename in datlist:
     
     modelname = os.path.basename(filename).split('.')[0]
-    print 'Adding '+ modelname +' to Sherpa'
+    info('Adding '+ modelname +' to Sherpa')
     add_psf(sherpa.astro.ui._session, filename, modelname)
 
