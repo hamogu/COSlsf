@@ -1,45 +1,21 @@
-'''This module defines classes, that can be used as SHERPA models.
-They fold the model spectrum with the COS line spread function (LSF).
-Different classes are supplied for individual gratings.
-
-CosG130M, CosG140L, CosG160M and CosNUV are based on the 
-Tabulated Theoretical Line Spread Functions  
-(COS ISR 2009-01, Ghavamian et al.).
-
-CosG130Memp and G160Memp are based on the 
-Tabulated Empirical Line Spread Functions
-(COS ISR 2011-01, Kriss).
-
-See http://www.stsci.edu/hst/cos/performance/spectral_resolution
-for more details.
-
-The models are automatically created when the module is imported.
-The convolution assumes that:
-    - The x-axes is in in Angstroem.
-    - The x-axes is binned such that one bin is 1 native COS pixel.
-
-Caveats:
-    - This routine bins the COS LSF to integer pixels (some of the tables
-        give fractional pixels.
-        
-Example:
-    ... load your data from file into wave, flux, err arrays ...
-    
-    sherpa> load_arrays(1, wave, flux, error)
-    sherpa> set_model('tabG160M(const1d.c+gauss1d.g)')
-    sherpa> fit()
-
-Format of input tables::
-    
-    - The header line has `nan` as first element and wavelength values as
-        column titles.
-    - Tabulated theoretical Line Spread Functions: These tables go from
-        -n to +n pixels, in the case of NUV in fractional pixels
-    - Tabulated Empirical Line Spread Functions: These go from 1 to 2n.
-    
-The tables are read such that the the resulting LSF is tabulated from
--n to +n assuming that the tables *give a symmetric region aroound the line center*.
-'''
+# 
+#  Copyright (C) 2011 Smithsonian Astrophysical Observatory
+#
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License along
+#  with this program; if not, write to the Free Software Foundation, Inc.,
+#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 import os
 import glob
 import numpy as np
@@ -50,16 +26,18 @@ from sherpa.utils.err import PSFErr
 from sherpa.ui import add_model
 
 from sherpa.instrument import ConvolutionKernel
+import sherpa.astro.ui
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
-import sherpa.astro.ui
+
 
 #import logging
 #warning = logging.getLogger(__name__).warning
 #info = logging.getLogger(__name__).info
 
 class Kernel(Model):
-
+    '''contains the convolution kernal and the convolution code
+    '''
     def __init__(self, lsf_tab, disp, name):
         self.lsf_tab = lsf_tab
         self.disp = disp
@@ -191,7 +169,7 @@ class ConvolutionModel(CompositeModel, ArithmeticModel):
 
 
 class CosLsf(ConvolutionKernel):
-    
+    '''Factory for COS LSF convolution models'''
     def __init__(self, kernel, name='COSLSF'):
         self.kernel = kernel
         self.name = name

@@ -1,0 +1,54 @@
+README
+======
+
+This module defines classes, that can be used as SHERPA models.
+They fold the model spectrum with the COS line spread function (LSF).
+Different classes are supplied for individual gratings, the following models are automatically created when the module is imported:
+    
+G130M: tabG130M, empG130M
+G160M: tabG160M, empG160M
+G140L: tabG140L
+NUV: tabNUV
+
+The convolution assumes that
+    
+- the x-axes has units of  Angstrom.
+- the x-axes is binned such that one bin is 1 native COS pixel.
+
+Caveats:
+- This routine bins the COS LSF to integer pixels (some of the tables  give fractional pixels.
+        
+Example:
+    
+    ... load your data from file into wave, flux, err arrays ...
+    
+    sherpa> load_arrays(1, wave, flux, error)
+    sherpa> set_model('tabG160M(const1d.c+gauss1d.g)')
+    sherpa> fit()
+
+tabG130M, tabG140L, tabG160M and tabNUV are based on the 
+Tabulated Theoretical Line Spread Functions  
+(COS ISR 2009-01, Ghavamian et al.).
+
+empG130M and empG160M are based on the 
+Tabulated Empirical Line Spread Functions
+(COS ISR 2011-01, Kriss).
+
+See [this link](http://www.stsci.edu/hst/cos/performance/spectral_resolution)
+for more details.
+
+The code has been tested with Sherpa in the CIAO 4.3, tests are written for py.test [see](http://pytest.org), version 2.2.
+
+
+Format of input tables:
+    
+- The header line has `nan` as first element and wavelength values as column
+  titles.
+- Tabulated theoretical Line Spread Functions: These tables go from -n 
+  to +n pixels, in the case of NUV in fractional pixels
+- Tabulated Empirical Line Spread Functions: These go from 1 to 2n.
+    
+The tables are read such that the the resulting LSF is tabulated from
+-n to +n assuming that the tables *give a symmetric region around the line center*.
+
+author: Hans Moritz Guenther, hguenther@cfa.harvard.edu
