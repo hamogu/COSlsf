@@ -1,6 +1,6 @@
 '''This module defines classes, that can be used as SHERPA models.
-They fold the modeled spectrum with the COS line spread function (LSF).
-Different classes are supplied for indidivual gratings.
+They fold the model spectrum with the COS line spread function (LSF).
+Different classes are supplied for individual gratings.
 
 CosG130M, CosG140L, CosG160M and CosNUV are based on the 
 Tabulated Theoretical Line Spread Functions  
@@ -13,11 +13,27 @@ Tabulated Empirical Line Spread Functions
 See http://www.stsci.edu/hst/cos/performance/spectral_resolution
 for more details.
 
+The models are automatically created when the module is imported.
+The convolution assumes that:
+    - The x-axes is in in Angstroem.
+    - The x-axes is binned such that one bin is 1 native COS pixel.
+
+Caveats:
+    - This routine bins the COS LSF to integer pixels (some of the tables
+        give fractional pixels.
+        
+Example:
+    ... load your data from file into wave, flux, err arrays ...
+    
+    sherpa> load_arrays(1, wave, flux, error)
+    sherpa> set_model('tabG160M(const1d.c+gauss1d.g)')
+    sherpa> fit()
+
 Format of input tables::
     
     - The header line has `nan` as first element and wavelength values as
         column titles.
-    - Tabulated Theoretical Line Spread Functions: These tables go from
+    - Tabulated theoretical Line Spread Functions: These tables go from
         -n to +n pixels, in the case of NUV in fractional pixels
     - Tabulated Empirical Line Spread Functions: These go from 1 to 2n.
     
@@ -38,9 +54,9 @@ from sherpa.instrument import ConvolutionKernel
 from sherpa.astro.utils import rmf_fold
 import sherpa.astro.ui
 
-import logging
-warning = logging.getLogger(__name__).warning
-info = logging.getLogger(__name__).info
+#import logging
+#warning = logging.getLogger(__name__).warning
+#info = logging.getLogger(__name__).info
 
 class Kernel(Model):
 
@@ -116,8 +132,8 @@ class Kernel(Model):
             if max(abs(np.diff(wave) - disp)) < (disp / 100.):
                 break
         else:
-            warning('LSF convolution requires x to be binned in pixels.')
-            warning('delta(x) differs from value given in COS IHB.')
+            print('LSF convolution requires x to be binned in pixels.')
+            print('delta(x) differs from value given in COS IHB.')
         # first line of table is header values
         wavelen = self.lsf_tab[0, 1:]
         if ((min(wave) < 0.9 * min(wavelen)) or (max(wave) > 1.1 * max(wavelen))):
@@ -204,7 +220,7 @@ def add_psf(session, filename, modelname):
             disp = dispersion[grating]
             break
     else:
-        warning('Grating in ' + modelname + ' not recogized.')
+        print('Grating in ' + modelname + ' not recogized.')
     
     lsf_tab = np.loadtxt(filename)
     this_kern = Kernel(lsf_tab, disp, modelname)
@@ -218,6 +234,6 @@ datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
 for filename in datlist:
     
     modelname = os.path.basename(filename).split('.')[0]
-    info('Adding '+ modelname +' to Sherpa')
+    print('Adding '+ modelname +' to Sherpa')
     add_psf(sherpa.astro.ui._session, filename, modelname)
 
