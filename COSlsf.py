@@ -92,7 +92,8 @@ class Kernel(Model):
             raise ValueError('Wave and Flux vector must have equal number of elements')
         # cache the _rsp, if wave did not change compared to the last call
         # This will generally be the case in Sherpa fits
-        if not np.allclose(wave, self.cache_x):
+        if ((wave.shape != self.cache_x.shape) or 
+             not np.allclose(wave, self.cache_x)):
             self.make_rsp(wave)
         
         return rmf_fold(flux, self._grp, self._fch, self._nch, self._rsp, len(wave), 1)
@@ -198,7 +199,7 @@ def add_psf(session, filename, modelname):
             disp = dispersion[grating]
             break
     else:
-        print('Grating in ' + modelname + ' not recogized.')
+        print('Grating in ' + modelname + ' not recognized.')
     
     lsf_tab = np.loadtxt(filename)
     this_kern = Kernel(lsf_tab, disp, modelname)
