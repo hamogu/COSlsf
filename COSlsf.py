@@ -23,10 +23,10 @@ import numpy as np
 from sherpa.models import Model, CompositeModel,  ArithmeticModel#, modelCacher1d
 from sherpa.utils import interpolate
 from sherpa.utils.err import PSFErr
-from sherpa.ui import add_model
+from sherpa.ui import add_model, _session
 
 from sherpa.instrument import ConvolutionKernel
-import sherpa.astro.ui
+
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
 
@@ -191,8 +191,16 @@ dispersion = {'G130M': [0.00997], 'G140L': [0.0803], 'G160M': [0.01223], 'NUV': 
 '''On import this module will detect all data files in lsf/
 and automatically generate SHERPA models for that.
 '''
-def add_psf(session, filename, modelname):
 
+# List of all data files in the lsf directory
+datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
+
+lsf_names = []
+
+for filename in datlist:
+    
+    modelname = os.path.basename(filename).split('.')[0]
+    print('Adding '+ modelname +' to Sherpa')
     for grating in dispersion.keys():
         # If one grating matches, generate a class for that
         if grating in filename:
@@ -200,19 +208,11 @@ def add_psf(session, filename, modelname):
             break
     else:
         print('Grating in ' + modelname + ' not recognized.')
-    
     lsf_tab = np.loadtxt(filename)
     this_kern = Kernel(lsf_tab, disp, modelname)
-    
     lsf = CosLsf(this_kern, modelname)
-    session._add_model_component(lsf)
+    _session._add_model_component(lsf)
+    lsf_names.append(modelname)
 
-# List of all data files in the lsf directory
-datlist = glob.glob(os.path.join(os.path.dirname(__file__), 'lsf', '*.dat'))
-
-for filename in datlist:
-    
-    modelname = os.path.basename(filename).split('.')[0]
-    print('Adding '+ modelname +' to Sherpa')
-    add_psf(sherpa.astro.ui._session, filename, modelname)
-
+    # Add to module level namespace
+    globals()[modelname] = lsf

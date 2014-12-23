@@ -29,8 +29,8 @@ def test_fwhm():
     to make sure Sherpa finds a good fit.
     
     The FWHM of the a convolved Gaussian should be smaller than that of a 
-    stand-alon Gaussian. The difference has to be 6.5 pix.
-   ''' 
+    stand-alone Gaussian. The difference has to be 6.5 pix.
+    ''' 
     
     disp = 0.01223
     x = np.arange(1430.,1435., 0.01223)
@@ -40,7 +40,7 @@ def test_fwhm():
     ampl = 1e-12
     y += ampl*np.exp(-(x-mu)**2./(0.5 * sigma**2.))
     yerr = np.ones_like(y) * 3e-14
-    return x, y, yerr, disp
+    #return x, y, yerr, disp
 
     set_method('simplex')
     x, y, yerr, disp = make_some_data()
