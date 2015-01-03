@@ -23,10 +23,10 @@ import numpy as np
 from sherpa.models import Model, CompositeModel,  ArithmeticModel#, modelCacher1d
 from sherpa.utils import interpolate
 from sherpa.utils.err import PSFErr
-from sherpa.ui import add_model
+from sherpa.ui import add_model, _session
 
 from sherpa.instrument import ConvolutionKernel
-import sherpa.astro.ui
+
 # The following is implemeted in C and thus faster than python.
 from sherpa.astro.utils import rmf_fold
 
@@ -214,5 +214,5 @@ for filename in datlist:
     
     modelname = os.path.basename(filename).split('.')[0]
     print('Adding '+ modelname +' to Sherpa')
-    add_psf(sherpa.astro.ui._session, filename, modelname)
+    add_psf(_session, filename, modelname)
 
